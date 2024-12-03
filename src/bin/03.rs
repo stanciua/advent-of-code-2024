@@ -23,10 +23,9 @@ fn digits(input: &str) -> IResult<&str, &str> {
 }
 
 fn argument(input: &str) -> IResult<&str, u32> {
-    map_res(
-        preceded(multispace0, digits),
-        |digit_str: &str| digit_str.parse::<u32>(),
-    )(input)
+    map_res(preceded(multispace0, digits), |digit_str: &str| {
+        digit_str.parse::<u32>()
+    })(input)
 }
 
 fn arguments(input: &str) -> IResult<&str, (u32, u32)> {
@@ -56,10 +55,7 @@ fn dont(input: &str) -> IResult<&str, Operation> {
 }
 
 fn operation(input: &str) -> IResult<&str, Operation> {
-    let (input, _) = many_till(
-        anychar,
-        peek(alt((mul, r#do, dont))),
-    )(input)?;
+    let (input, _) = many_till(anychar, peek(alt((mul, r#do, dont))))(input)?;
     alt((mul, r#do, dont))(input)
 }
 
