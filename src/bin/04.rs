@@ -1,19 +1,19 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 advent_of_code::solution!(4);
 
+#[must_use]
 pub fn part_one(input: &str) -> Option<u32> {
     let puzzle = parse_input(input);
-
-    Some(find_words(&puzzle, "XMAS"))
+    Some(find_word(&puzzle, "XMAS"))
 }
 
+#[must_use]
 pub fn part_two(input: &str) -> Option<u32> {
     let mut count = 0;
     let puzzle = parse_input(input);
-    let rows = puzzle.len();
-    let cols = puzzle[0].len();
-    for row in 0..rows {
-        for col in 0..cols {
-            if search_x_mas(&puzzle, row, col) {
+    for row in 0..puzzle.len() {
+        for col in 0..puzzle[0].len() {
+            if search_x_mas(&puzzle, row, col).is_some() {
                 count += 1;
             }
         }
@@ -37,7 +37,7 @@ fn parse_input(input: &str) -> Vec<Vec<char>> {
 }
 
 // Function to search in a specific direction
-fn search_x_mas(grid: &[Vec<char>], start_row: usize, start_col: usize) -> bool {
+fn search_x_mas(grid: &[Vec<char>], start_row: usize, start_col: usize) -> Option<()> {
     let directions = [
         (1, 1),   // Down-Right
         (1, -1),  // Down-Left
@@ -46,36 +46,40 @@ fn search_x_mas(grid: &[Vec<char>], start_row: usize, start_col: usize) -> bool 
     ];
 
     if grid[start_row][start_col] != 'A' {
-        return false;
+        return None;
     }
 
     // look into 4 diagonal directions if they are out of bounds
     for dir in directions {
-        let mut row = start_row as isize;
-        let mut col = start_col as isize;
-        row += dir.0;
-        col += dir.1;
-        if row < 0 || col < 0 || row >= grid.len() as isize || col >= grid[0].len() as isize {
-            return false;
+        let row = isize::try_from(start_row).ok()? + dir.0;
+        let col = isize::try_from(start_col).ok()? + dir.1;
+        if row < 0
+            || col < 0
+            || row >= isize::try_from(grid.len()).ok()?
+            || col >= isize::try_from(grid[0].len()).ok()?
+        {
+            return None;
         }
     }
 
+    // reset the row, col
     let row = start_row;
     let col = start_col;
 
+    // compute the X endpoints
     let down_right = grid[row + 1][col + 1];
     let up_left = grid[row - 1][col - 1];
     let up_right = grid[row - 1][col + 1];
     let down_left = grid[row + 1][col - 1];
 
     // look now for each direction to form MAS/SAM
-    if ((up_left == 'M' && down_right == 'S') || (up_left == 'S' && down_right == 'M'))
-        && ((up_right == 'M' && down_left == 'S') || (up_right == 'S' && down_left == 'M'))
+    if ((up_left, down_right) == ('M', 'S') || (up_left, down_right) == ('S', 'M'))
+        && ((up_right, down_left) == ('M', 'S') || (up_right, down_left) == ('S', 'M'))
     {
-        return true;
+        return Some(());
     }
 
-    false
+    None
 }
 
 // Function to search in a specific direction
@@ -86,27 +90,31 @@ fn search_direction(
     start_col: usize,
     row_step: isize,
     col_step: isize,
-) -> bool {
-    let mut row = start_row as isize;
-    let mut col = start_col as isize;
+) -> Option<()> {
+    let mut row = isize::try_from(start_row).ok()?;
+    let mut col = isize::try_from(start_col).ok()?;
     for ch in word.chars() {
-        if row < 0 || col < 0 || row >= grid.len() as isize || col >= grid[0].len() as isize {
-            return false;
+        if row < 0
+            || col < 0
+            || row >= isize::try_from(grid.len()).ok()?
+            || col >= isize::try_from(grid[0].len()).ok()?
+        {
+            return None;
         }
-        if grid[row as usize][col as usize] != ch {
-            return false;
+        if grid[usize::try_from(row).ok()?][usize::try_from(col).ok()?] != ch {
+            return None;
         }
         row += row_step;
         col += col_step;
     }
-    true
+    Some(())
 }
 
-fn find_words(grid: &[Vec<char>], word: &str) -> u32 {
+fn find_word(grid: &[Vec<char>], word: &str) -> u32 {
     let rows = grid.len();
     let cols = grid[0].len();
 
-    // Directions: (row_step, col_step)
+    // Directions
     let directions = [
         (0, 1),   // Right
         (0, -1),  // Left
@@ -118,12 +126,12 @@ fn find_words(grid: &[Vec<char>], word: &str) -> u32 {
         (-1, -1), // Up-Left
     ];
 
-    // Check for each word
+    // Check for word
     let mut count = 0;
     for row in 1..rows {
         for col in 0..cols {
             for &(row_step, col_step) in &directions {
-                if search_direction(grid, word, row, col, row_step, col_step) {
+                if search_direction(grid, word, row, col, row_step, col_step).is_some() {
                     count += 1;
                 }
             }
@@ -140,12 +148,12 @@ mod tests {
     #[test]
     fn test_part_one() {
         let result = part_one(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(16));
     }
 
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(9));
     }
 }
