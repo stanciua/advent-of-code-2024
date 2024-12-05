@@ -1,32 +1,18 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 use std::collections::{HashMap, HashSet, VecDeque};
 
 advent_of_code::solution!(5);
 
+#[must_use]
 pub fn part_one(input: &str) -> Option<u32> {
     let (rules, pages) = parse_input(input);
-    let mut numbers = HashSet::new();
-    rules.iter().for_each(|&(k, v)| {
-        numbers.insert(k);
-        numbers.insert(v);
-    });
 
-    let numbers: Vec<u32> = numbers.into_iter().collect();
+    let adjacency_list = get_adjacency_list(&rules);
+
     let mut sum = 0;
-    let mut adjacency_list: HashMap<u32, HashSet<u32>> = HashMap::new();
-    for num in numbers.into_iter() {
-        adjacency_list.insert(num, HashSet::new());
-    }
-    // Populate the adjacency list and in-degree counts
-    for (before, after) in rules {
-        adjacency_list.entry(before).or_default().insert(after);
-    }
-
     'outer: for page in pages {
         for (idx, n) in page.iter().enumerate() {
-            if !(idx + 1..page.len())
-                .into_iter()
-                .all(|idx| adjacency_list[&page[idx]].get(&n).is_none())
-            {
+            if !(idx + 1..page.len()).all(|idx| !adjacency_list[&page[idx]].contains(n)) {
                 continue 'outer;
             }
         }
@@ -36,58 +22,58 @@ pub fn part_one(input: &str) -> Option<u32> {
     Some(sum)
 }
 
+#[must_use]
 pub fn part_two(input: &str) -> Option<u32> {
     let (rules, pages) = parse_input(input);
-    let mut numbers = HashSet::new();
-    rules.iter().for_each(|&(k, v)| {
-        numbers.insert(k);
-        numbers.insert(v);
-    });
 
-    let numbers: Vec<u32> = numbers.into_iter().collect();
+    let adjacency_list = get_adjacency_list(&rules);
+
     let mut sum = 0;
-    let mut adjacency_list: HashMap<u32, HashSet<u32>> = HashMap::new();
-    for num in numbers.into_iter() {
-        adjacency_list.insert(num, HashSet::new());
-    }
-    // Populate the adjacency list and in-degree counts
-    for (before, after) in rules {
-        adjacency_list.entry(before).or_default().insert(after);
-    }
-
-    let mut not_in_order = Vec::new();
     'outer: for page in pages {
         for (idx, n) in page.iter().enumerate() {
-            if !(idx + 1..page.len())
-                .into_iter()
-                .all(|idx| adjacency_list[&page[idx]].get(&n).is_none())
-            {
-                not_in_order.push(page);
+            if !(idx + 1..page.len()).all(|idx| !adjacency_list[&page[idx]].contains(n)) {
+                // page is not in order, reorder it
+                let mut ordered_page = Vec::new();
+                let mut deque = page.iter().copied().collect::<VecDeque<_>>();
+                while !deque.is_empty() {
+                    if let Some(n) = deque.pop_front() {
+                        if deque
+                            .iter()
+                            .copied()
+                            .all(|r| !adjacency_list[&r].contains(&n))
+                        {
+                            ordered_page.push(n);
+                        } else {
+                            deque.push_back(n);
+                        }
+                    }
+                }
+                sum += ordered_page[ordered_page.len() / 2];
                 continue 'outer;
             }
         }
     }
 
-    for page in not_in_order {
-        let mut ordered_page = Vec::new();
-        let mut deque = VecDeque::from_iter(page.iter().cloned());
-        while !deque.is_empty() {
-            if let Some(n) = deque.pop_front() {
-                if deque
-                    .iter()
-                    .cloned()
-                    .all(|r| adjacency_list[&r].get(&n).is_none())
-                {
-                    ordered_page.push(n);
-                } else {
-                    deque.push_back(n);
-                }
-            }
-        }
-        sum += ordered_page[ordered_page.len() / 2];
+    Some(sum)
+}
+
+fn get_adjacency_list(rules: &[(u32, u32)]) -> HashMap<u32, HashSet<u32>> {
+    let mut numbers = HashSet::new();
+    for &(k, v) in rules {
+        numbers.insert(k);
+        numbers.insert(v);
     }
 
-    Some(sum)
+    let mut adjacency_list: HashMap<u32, HashSet<u32>> = HashMap::new();
+    for num in numbers {
+        adjacency_list.insert(num, HashSet::new());
+    }
+    // Populate the adjacency list and in-degree counts
+    for &(before, after) in rules {
+        adjacency_list.entry(before).or_default().insert(after);
+    }
+
+    adjacency_list
 }
 
 fn parse_input(input: &str) -> (Vec<(u32, u32)>, Vec<Vec<u32>>) {
