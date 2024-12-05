@@ -9,36 +9,85 @@ pub fn part_one(input: &str) -> Option<u32> {
         numbers.insert(k);
         numbers.insert(v);
     });
+
     let numbers: Vec<u32> = numbers.into_iter().collect();
-
     let mut sum = 0;
-
     let mut adjacency_list: HashMap<u32, HashSet<u32>> = HashMap::new();
     for num in numbers.into_iter() {
         adjacency_list.insert(num, HashSet::new());
     }
+    // Populate the adjacency list and in-degree counts
+    for (before, after) in rules {
+        adjacency_list.entry(before).or_default().insert(after);
+    }
 
-    if let Some(inorder) = topological_sort(rules.as_slice(), numbers.as_slice()) {
-        let mut inorder_map = HashMap::new();
-        inorder.iter().enumerate().for_each(|(idx, n)| {
-            inorder_map.insert(n, idx);
-        });
-        for mut page in pages {
-            let curr_page = page.clone();
-            page.sort_by(|a, b| inorder_map[a].cmp(&inorder_map[b]));
-            if page == curr_page {
-                sum += page[page.len() / 2];
+    'outer: for page in pages {
+        for (idx, n) in page.iter().enumerate() {
+            if !(idx + 1..page.len())
+                .into_iter()
+                .all(|idx| adjacency_list[&page[idx]].get(&n).is_none())
+            {
+                continue 'outer;
             }
         }
-    } else {
-        dbg!("ups");
+        sum += page[page.len() / 2];
     }
 
     Some(sum)
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    let (rules, pages) = parse_input(input);
+    let mut numbers = HashSet::new();
+    rules.iter().for_each(|&(k, v)| {
+        numbers.insert(k);
+        numbers.insert(v);
+    });
+
+    let numbers: Vec<u32> = numbers.into_iter().collect();
+    let mut sum = 0;
+    let mut adjacency_list: HashMap<u32, HashSet<u32>> = HashMap::new();
+    for num in numbers.into_iter() {
+        adjacency_list.insert(num, HashSet::new());
+    }
+    // Populate the adjacency list and in-degree counts
+    for (before, after) in rules {
+        adjacency_list.entry(before).or_default().insert(after);
+    }
+
+    let mut not_in_order = Vec::new();
+    'outer: for page in pages {
+        for (idx, n) in page.iter().enumerate() {
+            if !(idx + 1..page.len())
+                .into_iter()
+                .all(|idx| adjacency_list[&page[idx]].get(&n).is_none())
+            {
+                not_in_order.push(page);
+                continue 'outer;
+            }
+        }
+    }
+
+    for page in not_in_order {
+        let mut ordered_page = Vec::new();
+        let mut deque = VecDeque::from_iter(page.iter().cloned());
+        while !deque.is_empty() {
+            if let Some(n) = deque.pop_front() {
+                if deque
+                    .iter()
+                    .cloned()
+                    .all(|r| adjacency_list[&r].get(&n).is_none())
+                {
+                    ordered_page.push(n);
+                } else {
+                    deque.push_back(n);
+                }
+            }
+        }
+        sum += ordered_page[ordered_page.len() / 2];
+    }
+
+    Some(sum)
 }
 
 fn parse_input(input: &str) -> (Vec<(u32, u32)>, Vec<Vec<u32>>) {
@@ -70,55 +119,6 @@ fn parse_input(input: &str) -> (Vec<(u32, u32)>, Vec<Vec<u32>>) {
     (rules, pages)
 }
 
-// Perform a topological sort
-fn topological_sort(rules: &[(u32, u32)], numbers: &[u32]) -> Option<Vec<u32>> {
-    // Build adjacency list and in-degree count
-    let mut adjacency_list: HashMap<u32, Vec<u32>> = HashMap::new();
-    let mut in_degree: HashMap<u32, usize> = HashMap::new();
-
-    // Initialize in-degree for all numbers
-    for &num in numbers {
-        in_degree.insert(num, 0);
-        adjacency_list.insert(num, vec![]);
-    }
-    // Populate the adjacency list and in-degree counts
-    for &(before, after) in rules {
-        adjacency_list.entry(before).or_default().push(after);
-        *in_degree.entry(after).or_default() += 1;
-    }
-    dbg!(&adjacency_list);
-
-    // Start with nodes that have no incoming edges
-    let mut queue: VecDeque<u32> = in_degree
-        .iter()
-        .filter(|&(_, &deg)| deg == 0)
-        .map(|(&num, _)| num)
-        .collect();
-
-    let mut sorted_order = vec![];
-
-    while let Some(current) = queue.pop_front() {
-        sorted_order.push(current);
-
-        if let Some(neighbors) = adjacency_list.get(&current) {
-            for &neighbor in neighbors {
-                let entry = in_degree.entry(neighbor).or_default();
-                *entry -= 1;
-                if *entry == 0 {
-                    queue.push_back(neighbor);
-                }
-            }
-        }
-    }
-
-    // Check if all nodes are sorted (no cycles)
-    if sorted_order.len() == numbers.len() {
-        Some(sorted_order)
-    } else {
-        None // Cycle detected
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,6 +132,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(123));
     }
 }
