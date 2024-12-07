@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 
 use itertools::Itertools;
 
@@ -11,45 +11,24 @@ enum Operation {
     Concatenation,
 }
 
+#[must_use]
 pub fn part_one(input: &str) -> Option<u64> {
-    use Operation::*;
+    use Operation::{Add, Multiply};
     let equations = parse_input(input);
     let operations = [Add, Multiply];
-    let mut total = 0u64;
-    for equation in equations {
-        let combinations = std::iter::repeat(operations.iter())
-            .take(equation.1.len() - 1)
-            .multi_cartesian_product()
-            .collect::<Vec<_>>();
-
-        for combination in combinations {
-            let mut result = equation.1[0];
-            for (idx, n) in equation.1[1..].iter().enumerate() {
-                match combination[idx] {
-                    Add => {
-                        result += n;
-                    }
-                    Multiply => {
-                        result *= n;
-                    }
-                    _ => {
-                        panic!("value not supported");
-                    }
-                }
-            }
-            if result == equation.0 {
-                total += result;
-                break;
-            }
-        }
-    }
-    Some(total)
+    Some(solve_equation(&equations, &operations))
 }
 
+#[must_use]
 pub fn part_two(input: &str) -> Option<u64> {
-    use Operation::*;
+    use Operation::{Add, Concatenation, Multiply};
     let equations = parse_input(input);
     let operations = [Add, Multiply, Concatenation];
+    Some(solve_equation(&equations, &operations))
+}
+
+fn solve_equation(equations: &[(u64, Vec<u64>)], operations: &[Operation]) -> u64 {
+    use Operation::{Add, Concatenation, Multiply};
     let mut total = 0u64;
     for equation in equations {
         let combinations = std::iter::repeat(operations.iter())
@@ -60,17 +39,24 @@ pub fn part_two(input: &str) -> Option<u64> {
         for combination in combinations {
             let mut result = equation.1[0];
             for (idx, n) in equation.1[1..].iter().enumerate() {
-                match combination[idx] {
-                    Add => {
+                match combination.get(idx) {
+                    Some(Add) => {
                         result += n;
                     }
-                    Multiply => {
+                    Some(Multiply) => {
                         result *= n;
                     }
-                    Concatenation => {
-                        let mut r = result.to_string();
-                        r.push_str(&n.to_string());
-                        result = r.parse::<u64>().unwrap_or_default();
+                    Some(Concatenation) => {
+                        let mut temp = *n;
+                        let mut multiplier = 1;
+                        while temp > 0 {
+                            multiplier *= 10;
+                            temp /= 10;
+                        }
+                        result = result * multiplier + *n;
+                    }
+                    _ => {
+                        panic!("Unknown operation");
                     }
                 }
             }
@@ -80,7 +66,8 @@ pub fn part_two(input: &str) -> Option<u64> {
             }
         }
     }
-    Some(total)
+
+    total
 }
 
 fn parse_input(input: &str) -> Vec<(u64, Vec<u64>)> {
