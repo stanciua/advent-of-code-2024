@@ -20,84 +20,105 @@ pub fn part_one(input: &str) -> Option<u32> {
         }
     }
 
-    let mut antinodes = 0;
+    let mut count = 0;
     for positions in antennas.values() {
-        let combinations = get_all_antennas_combinations(&positions);
-        for c in &combinations {
-            let diff_x = (c[0].0 as isize - c[1].0 as isize).unsigned_abs();
-            let diff_y = (c[0].1 as isize - c[1].1 as isize).unsigned_abs();
-            // look in the top-right corner
-            let anx = c[0].0 as isize - diff_x as isize;
-            let any = c[0].1 + diff_y;
-            if anx >= 0 && any < map[0].len() && in_line_3_points(c[0], c[1], (anx as usize, any)) {
-                if !seen.contains(&(anx as usize, any)) {
-                    antinodes += 1;
-                    seen.insert((anx as usize, any));
-                }
-            }
-            // look in the top-left corner
-            let anx = c[0].0 as isize - diff_x as isize;
-            let any = c[0].1 as isize - diff_y as isize;
-            if anx >= 0 && any >= 0 && in_line_3_points(c[0], c[1], (anx as usize, any as usize)) {
-                if !seen.contains(&(anx as usize, any as usize)) {
-                    antinodes += 1;
-                    seen.insert((anx as usize, any as usize));
-                }
-            }
-            // look in the bottom-right corner
-            let anx = c[1].0 + diff_x;
-            let any = c[1].1 + diff_y;
-            if anx < map.len() && any < map[0].len() && in_line_3_points(c[0], c[1], (anx, any)) {
-                if !seen.contains(&(anx, any)) {
-                    antinodes += 1;
-                    seen.insert((anx, any));
-                }
-            }
-            // look in the bottom-left corner
-            let anx = c[1].0 + diff_x;
-            let any = c[1].1 as isize - diff_y as isize;
-            if anx < map.len() && any >= 0 && in_line_3_points(c[0], c[1], (anx, any as usize)) {
-                if !seen.contains(&(anx, any as usize)) {
-                    antinodes += 1;
-                    seen.insert((anx, any as usize));
-                }
-            }
+        let combinations = get_all_antennas_combinations(positions);
+        for c in combinations {
+            update_antinodes(c, &mut seen, &map, &mut count, false);
         }
     }
+    Some(count)
+}
+fn update_antinodes(
+    antenna_pair: [(usize, usize); 2],
+    seen: &mut HashSet<(usize, usize)>,
+    map: &[Vec<char>],
+    count: &mut u32,
+    multi_antinodes_flg: bool,
+) {
+    let [(x1, y1), (x2, y2)] = antenna_pair;
+    let dx = if x1 > x2 { x1 - x2 } else { x2 - x1 };
+    let dy = if y1 > y2 { y1 - y2 } else { y2 - y1 };
+    let (x1, y1, x2, y2, dx, dy) = (
+        x1 as isize,
+        y1 as isize,
+        x2 as isize,
+        y2 as isize,
+        dx as isize,
+        dy as isize,
+    );
+    let mut positions = [
+        (x1 - dx, y1 + dy), // top-right
+        (x1 - dx, y1 - dy), // top-right
+        (x2 + dx, y2 + dy), // bottom-right
+        (x2 + dx, y2 - dy), // bottom-left
+    ];
+    loop {
+        for (idx, (ax, ay)) in positions.iter_mut().enumerate() {
+            if is_pos_out_of_bounds(map, (*ax, *ay)) {
+                continue;
+            }
+            if are_3_points_inline((x1, y1), (x2, y2), (*ax, *ay))
+                && !seen.contains(&(*ax as usize, *ay as usize))
+            {
+                if multi_antinodes_flg {
+                    if map[*ax as usize][*ay as usize] == '.' {
+                        *count += 1;
+                        seen.insert((*ax as usize, *ay as usize));
+                    }
+                } else {
+                    *count += 1;
+                    seen.insert((*ax as usize, *ay as usize));
+                }
+            }
+            match idx {
+                0 => {
+                    *ax -= dx;
+                    *ay += dy;
+                }
+                1 => {
+                    *ax -= dx;
+                    *ay -= dy;
+                }
+                2 => {
+                    *ax += dx;
+                    *ay += dy;
+                }
+                3 => {
+                    *ax += dx;
+                    *ay -= dy;
+                }
+                _ => unreachable!(),
+            }
+        }
 
-    Some(antinodes)
+        if !multi_antinodes_flg || positions.iter().all(|pos| is_pos_out_of_bounds(map, *pos)) {
+            break;
+        }
+    }
 }
 
-fn get_all_antennas_combinations(positions: &[(usize, usize)]) -> Vec<Vec<(usize, usize)>> {
+fn is_pos_out_of_bounds(map: &[Vec<char>], pos: (isize, isize)) -> bool {
+    let (ax, ay) = pos;
+    ax < 0 || ax >= map.len() as isize || ay < 0 || ay >= map[0].len() as isize
+}
+
+fn get_all_antennas_combinations(positions: &[(usize, usize)]) -> Vec<[(usize, usize); 2]> {
     let mut combinations = Vec::new();
     for i in 0..positions.len() {
         for j in i + 1..positions.len() {
-            combinations.push(Vec::from([positions[i], positions[j]]));
+            combinations.push([positions[i], positions[j]]);
         }
     }
 
     combinations
 }
 
-fn in_line_2_points(a1: (usize, usize), a2: (usize, usize)) -> bool {
-    let (x1, y1) = a1;
-    let (x2, y2) = a2;
-    let diff_x = (x2 as isize - x1 as isize).unsigned_abs();
-    let diff_y = (y2 as isize - y1 as isize).unsigned_abs();
-
-    a2 == (a1.0 + diff_x, a1.1 + diff_y)
-}
-
-fn in_line_3_points(a1: (usize, usize), a2: (usize, usize), in1: (usize, usize)) -> bool {
+fn are_3_points_inline(a1: (isize, isize), a2: (isize, isize), in1: (isize, isize)) -> bool {
     let (x1, y1) = a1;
     let (x2, y2) = a2;
     let (x3, y3) = in1;
-    let area = (x1 as isize * (y2 as isize - y3 as isize)
-        + x2 as isize * (y3 as isize - y1 as isize)
-        + x3 as isize * (y1 as isize - y2 as isize))
-        .abs() as f64
-        / 2.0;
-    area == 0.0
+    (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)).abs() as f64 / 2.0 == 0.0
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
@@ -116,72 +137,16 @@ pub fn part_two(input: &str) -> Option<u32> {
         }
     }
 
-    let mut antinodes = 0;
-    let antennas_copy = antennas.clone();
+    let mut count = 0;
     for positions in antennas.values() {
-        let combinations = get_all_antennas_combinations(&positions);
-        for c in &combinations {
-            let diff_x = (c[0].0 as isize - c[1].0 as isize).unsigned_abs();
-            let diff_y = (c[0].1 as isize - c[1].1 as isize).unsigned_abs();
-            // look in the top-right corner
-            let mut anx = c[0].0 as isize - diff_x as isize;
-            let mut any = c[0].1 + diff_y;
-            while anx >= 0 && any < map[0].len() {
-                if in_line_3_points(c[0], c[1], (anx as usize, any)) {
-                    if !seen.contains(&(anx as usize, any)) && map[anx as usize][any] == '.' {
-                        antinodes += 1;
-                        seen.insert((anx as usize, any));
-                    }
-                }
-                anx -= diff_x as isize;
-                any += diff_y;
-            }
-            // look in the top-left corner
-            let mut anx = c[0].0 as isize - diff_x as isize;
-            let mut any = c[0].1 as isize - diff_y as isize;
-            while anx >= 0 && any >= 0 {
-                if in_line_3_points(c[0], c[1], (anx as usize, any as usize)) {
-                    if !seen.contains(&(anx as usize, any as usize))
-                        && map[anx as usize][any as usize] == '.'
-                    {
-                        antinodes += 1;
-                        seen.insert((anx as usize, any as usize));
-                    }
-                }
-                anx -= diff_x as isize;
-                any -= diff_y as isize;
-            }
-            // look in the bottom-right corner
-            let mut anx = c[1].0 + diff_x;
-            let mut any = c[1].1 + diff_y;
-            while anx < map.len() && any < map[0].len() {
-                if in_line_3_points(c[0], c[1], (anx, any)) && map[anx][any] == '.' {
-                    if !seen.contains(&(anx, any)) {
-                        antinodes += 1;
-                        seen.insert((anx, any));
-                    }
-                }
-                anx += diff_x;
-                any += diff_y;
-            }
-            // look in the bottom-left corner
-            let mut anx = c[1].0 + diff_x;
-            let mut any = c[1].1 as isize - diff_y as isize;
-            while anx < map.len() && any >= 0 {
-                if in_line_3_points(c[0], c[1], (anx, any as usize)) {
-                    if !seen.contains(&(anx, any as usize)) && map[anx][any as usize] == '.' {
-                        antinodes += 1;
-                        seen.insert((anx, any as usize));
-                    }
-                }
-                anx += diff_x;
-                any -= diff_y as isize;
-            }
+        let combinations = get_all_antennas_combinations(positions);
+        for c in combinations {
+            update_antinodes(c, &mut seen, &map, &mut count, true);
         }
     }
     Some(
-        antinodes
-            + antennas_copy
+        count
+            + antennas
                 .into_values()
                 .filter_map(|v| {
                     if v.len() > 1 {
