@@ -4,23 +4,11 @@ use std::collections::{HashMap, HashSet};
 advent_of_code::solution!(8);
 
 #[must_use]
-pub fn part_one(input: &str) -> Option<u32> {
+pub fn part_one(input: &str) -> Option<usize> {
     let map = parse_input(input);
-    let mut antennas = HashMap::new();
-    let mut seen = HashSet::new();
-    for i in 0..map.len() {
-        for j in 0..map[0].len() {
-            let sym = map[i][j];
-            if sym.is_numeric() || sym.is_lowercase() || sym.is_uppercase() {
-                antennas
-                    .entry(sym)
-                    .and_modify(|pos: &mut Vec<(usize, usize)>| pos.push((i, j)))
-                    .or_insert_with(|| Vec::from([(i, j)]));
-            }
-        }
-    }
-
     let mut count = 0;
+    let mut seen = HashSet::new();
+    let antennas = get_antennas(&map);
     for positions in antennas.values() {
         let combinations = get_all_antennas_combinations(positions);
         for c in combinations {
@@ -33,19 +21,19 @@ fn update_antinodes(
     antenna_pair: [(usize, usize); 2],
     seen: &mut HashSet<(usize, usize)>,
     map: &[Vec<char>],
-    count: &mut u32,
+    count: &mut usize,
     multi_antinodes_flg: bool,
-) {
+) -> Option<()> {
     let [(x1, y1), (x2, y2)] = antenna_pair;
     let dx = if x1 > x2 { x1 - x2 } else { x2 - x1 };
     let dy = if y1 > y2 { y1 - y2 } else { y2 - y1 };
     let (x1, y1, x2, y2, dx, dy) = (
-        x1 as isize,
-        y1 as isize,
-        x2 as isize,
-        y2 as isize,
-        dx as isize,
-        dy as isize,
+        isize::try_from(x1).ok()?,
+        isize::try_from(y1).ok()?,
+        isize::try_from(x2).ok()?,
+        isize::try_from(y2).ok()?,
+        isize::try_from(dx).ok()?,
+        isize::try_from(dy).ok()?,
     );
     let mut positions = [
         (x1 - dx, y1 + dy), // top-right
@@ -55,20 +43,20 @@ fn update_antinodes(
     ];
     loop {
         for (idx, (ax, ay)) in positions.iter_mut().enumerate() {
-            if is_pos_out_of_bounds(map, (*ax, *ay)) {
+            if is_pos_out_of_bounds(map, (*ax, *ay)).is_some() {
                 continue;
             }
             if are_3_points_inline((x1, y1), (x2, y2), (*ax, *ay))
-                && !seen.contains(&(*ax as usize, *ay as usize))
+                && !seen.contains(&(usize::try_from(*ax).ok()?, usize::try_from(*ay).ok()?))
             {
                 if multi_antinodes_flg {
-                    if map[*ax as usize][*ay as usize] == '.' {
+                    if map[usize::try_from(*ax).ok()?][usize::try_from(*ay).ok()?] == '.' {
                         *count += 1;
-                        seen.insert((*ax as usize, *ay as usize));
+                        seen.insert((usize::try_from(*ax).ok()?, usize::try_from(*ay).ok()?));
                     }
                 } else {
                     *count += 1;
-                    seen.insert((*ax as usize, *ay as usize));
+                    seen.insert((usize::try_from(*ax).ok()?, usize::try_from(*ay).ok()?));
                 }
             }
             match idx {
@@ -92,15 +80,29 @@ fn update_antinodes(
             }
         }
 
-        if !multi_antinodes_flg || positions.iter().all(|pos| is_pos_out_of_bounds(map, *pos)) {
+        if !multi_antinodes_flg
+            || positions
+                .iter()
+                .all(|pos| is_pos_out_of_bounds(map, *pos).is_some())
+        {
             break;
         }
     }
+
+    Some(())
 }
 
-fn is_pos_out_of_bounds(map: &[Vec<char>], pos: (isize, isize)) -> bool {
+fn is_pos_out_of_bounds(map: &[Vec<char>], pos: (isize, isize)) -> Option<bool> {
     let (ax, ay) = pos;
-    ax < 0 || ax >= map.len() as isize || ay < 0 || ay >= map[0].len() as isize
+    let flag = ax < 0
+        || ax >= isize::try_from(map.len()).ok()?
+        || ay < 0
+        || ay >= isize::try_from(map[0].len()).ok()?;
+    if flag {
+        Some(flag)
+    } else {
+        None
+    }
 }
 
 fn get_all_antennas_combinations(positions: &[(usize, usize)]) -> Vec<[(usize, usize); 2]> {
@@ -114,17 +116,15 @@ fn get_all_antennas_combinations(positions: &[(usize, usize)]) -> Vec<[(usize, u
     combinations
 }
 
-fn are_3_points_inline(a1: (isize, isize), a2: (isize, isize), in1: (isize, isize)) -> bool {
+const fn are_3_points_inline(a1: (isize, isize), a2: (isize, isize), in1: (isize, isize)) -> bool {
     let (x1, y1) = a1;
     let (x2, y2) = a2;
     let (x3, y3) = in1;
-    (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)).abs() as f64 / 2.0 == 0.0
+    (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)).abs() / 2 == 0
 }
 
-pub fn part_two(input: &str) -> Option<u32> {
-    let mut map = parse_input(input);
+fn get_antennas(map: &[Vec<char>]) -> HashMap<char, Vec<(usize, usize)>> {
     let mut antennas = HashMap::new();
-    let mut seen = HashSet::new();
     for i in 0..map.len() {
         for j in 0..map[0].len() {
             let sym = map[i][j];
@@ -132,12 +132,21 @@ pub fn part_two(input: &str) -> Option<u32> {
                 antennas
                     .entry(sym)
                     .and_modify(|pos: &mut Vec<(usize, usize)>| pos.push((i, j)))
-                    .or_insert(Vec::from([(i, j)]));
+                    .or_insert_with(|| Vec::from([(i, j)]));
             }
         }
     }
 
+    antennas
+}
+
+#[must_use]
+pub fn part_two(input: &str) -> Option<usize> {
+    let map = parse_input(input);
+
     let mut count = 0;
+    let mut seen = HashSet::new();
+    let antennas = get_antennas(&map);
     for positions in antennas.values() {
         let combinations = get_all_antennas_combinations(positions);
         for c in combinations {
@@ -148,14 +157,8 @@ pub fn part_two(input: &str) -> Option<u32> {
         count
             + antennas
                 .into_values()
-                .filter_map(|v| {
-                    if v.len() > 1 {
-                        Some(v.len() as u32)
-                    } else {
-                        None
-                    }
-                })
-                .sum::<u32>(),
+                .filter_map(|v| if v.len() > 1 { Some(v.len()) } else { None })
+                .sum::<usize>(),
     )
 }
 
