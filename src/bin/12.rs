@@ -83,15 +83,15 @@ fn flood_fill(
 fn get_garden_plot_sides(
     (x, y): (usize, usize),
     garden: &[Vec<char>],
-    plot_sides: &mut BTreeMap<(usize, usize), BTreeSet<Direction>>,
+    plot_sides_per_dir: &mut BTreeMap<(usize, usize), BTreeSet<Direction>>,
 ) {
-    plot_sides.entry((x, y)).or_default();
+    plot_sides_per_dir.entry((x, y)).or_default();
     for dir in DIRECTIONS {
         let (dirx, diry) = COORDINATES[dir as usize];
         let dx = x as isize + dirx;
         let dy = y as isize + diry;
         if dx < 0 || dx > garden.len() as isize - 1 || dy < 0 || dy > garden[x].len() as isize - 1 {
-            plot_sides
+            plot_sides_per_dir
                 .entry((x, y))
                 .and_modify(|ps: &mut BTreeSet<Direction>| {
                     ps.insert(dir);
@@ -102,7 +102,7 @@ fn get_garden_plot_sides(
 
         // if the neighbor garden plot is different, count it
         if garden[dx as usize][dy as usize] != garden[x][y] {
-            plot_sides
+            plot_sides_per_dir
                 .entry((x, y))
                 .and_modify(|ps: &mut BTreeSet<Direction>| {
                     ps.insert(dir);
@@ -114,19 +114,7 @@ fn get_garden_plot_sides(
 
 pub fn part_one(input: &str) -> Option<usize> {
     let garden = parse_input(input);
-    let mut garden_plot_type_map = BTreeMap::new();
-    let mut all_garden_plots = BTreeSet::new();
-    for x in 0..garden.len() {
-        for y in 0..garden[x].len() {
-            let mut garden_plot = BTreeSet::new();
-            if all_garden_plots.contains(&(x, y)) {
-                continue;
-            }
-            flood_fill(&garden, &mut garden_plot, (x, y), garden[x][y]);
-            all_garden_plots.extend(garden_plot.iter().cloned());
-            garden_plot_type_map.insert((x, y), garden_plot);
-        }
-    }
+    let garden_plot_type_map = get_garden_regions_per_pos(&garden);
 
     let mut total_price = 0;
     for garden_plot in garden_plot_type_map.values() {
@@ -149,42 +137,26 @@ pub fn part_one(input: &str) -> Option<usize> {
 
 pub fn part_two(input: &str) -> Option<usize> {
     let garden = parse_input(input);
-    let mut garden_plot_type_map = BTreeMap::new();
-    let mut all_garden_plots = BTreeSet::new();
-    for x in 0..garden.len() {
-        for y in 0..garden[x].len() {
-            let mut garden_plot = BTreeSet::new();
-            if all_garden_plots.contains(&(x, y)) {
-                continue;
-            }
-            flood_fill(&garden, &mut garden_plot, (x, y), garden[x][y]);
-            all_garden_plots.extend(garden_plot.iter().cloned());
-            garden_plot_type_map.insert((x, y), garden_plot);
-        }
-    }
+    let garden_plot_type_map = get_garden_regions_per_pos(&garden);
 
     let mut total_price = 0;
     for garden_plot in garden_plot_type_map.values() {
-        let mut same_line: Vec<(usize, usize)> = Vec::from_iter(garden_plot.iter().cloned());
-        same_line.sort_by(|a, b| a.0.cmp(&b.0));
-        let same_line = same_line
-            .chunk_by(|a, b| a.0 == b.0 && (a.1 as isize - b.1 as isize).abs() == 1)
-            .collect::<Vec<_>>();
-        let mut same_column: Vec<(usize, usize)> = Vec::from_iter(garden_plot.iter().cloned());
-        same_column.sort_by(|a, b| a.1.cmp(&b.1));
-        let same_column = same_column
-            .chunk_by(|a, b| a.1 == b.1 && (a.0 as isize - b.0 as isize).abs() == 1)
-            .collect::<Vec<_>>();
+        let GetPlotsOnSameLineColumnResult(plots_same_line, plots_same_column) =
+            get_plots_on_same_line_column(garden_plot);
 
-        let mut plot_sides = BTreeMap::new();
+        let mut plot_sides_per_dir = BTreeMap::new();
         garden_plot.iter().for_each(|&p| {
-            get_garden_plot_sides(p, &garden, &mut plot_sides);
+            get_garden_plot_sides(p, &garden, &mut plot_sides_per_dir);
         });
 
-        let mut perimeter = compute_no_of_sides(&mut plot_sides, &same_line, &same_column);
+        let mut perimeter = compute_no_of_sides(
+            &mut plot_sides_per_dir,
+            &plots_same_line,
+            &plots_same_column,
+        );
 
         for p in garden_plot {
-            if let Some(sides) = plot_sides.get(p) {
+            if let Some(sides) = plot_sides_per_dir.get(p) {
                 perimeter += sides.len();
             }
         }
@@ -194,83 +166,89 @@ pub fn part_two(input: &str) -> Option<usize> {
     Some(total_price)
 }
 
-fn compute_no_of_sides(
-    plot_sides: &mut BTreeMap<(usize, usize), BTreeSet<Direction>>,
-    same_line: &[&[(usize, usize)]],
-    same_column: &[&[(usize, usize)]],
-) -> usize {
-    let mut no_of_sides = 0;
-    for &partition in same_line {
-        if partition.len() < 2 {
-            continue;
+struct GetPlotsOnSameLineColumnResult(Vec<Vec<(usize, usize)>>, Vec<Vec<(usize, usize)>>);
+
+fn get_plots_on_same_line_column(
+    garden_plot: &BTreeSet<(usize, usize)>,
+) -> GetPlotsOnSameLineColumnResult {
+    let mut same_line: Vec<(usize, usize)> = Vec::from_iter(garden_plot.iter().cloned());
+    same_line.sort_by(|a, b| a.0.cmp(&b.0));
+    let same_line = same_line
+        .chunk_by(|a, b| a.0 == b.0 && (a.1 as isize - b.1 as isize).abs() == 1)
+        .filter(|chunk| chunk.len() > 1)
+        .map(|chunk| chunk.to_vec())
+        .collect::<Vec<_>>();
+    let mut same_column: Vec<(usize, usize)> = Vec::from_iter(garden_plot.iter().cloned());
+    same_column.sort_by(|a, b| a.1.cmp(&b.1));
+    let same_column = same_column
+        .chunk_by(|a, b| a.1 == b.1 && (a.0 as isize - b.0 as isize).abs() == 1)
+        .filter(|chunk| chunk.len() > 1)
+        .map(|chunk| chunk.to_vec())
+        .collect::<Vec<_>>();
+    GetPlotsOnSameLineColumnResult(same_line, same_column)
+}
+
+fn get_garden_regions_per_pos(
+    garden: &[Vec<char>],
+) -> BTreeMap<(usize, usize), BTreeSet<(usize, usize)>> {
+    let mut garden_plot_type_map = BTreeMap::new();
+    let mut all_garden_plots = BTreeSet::new();
+    for x in 0..garden.len() {
+        for y in 0..garden[x].len() {
+            let mut garden_plot = BTreeSet::new();
+            if all_garden_plots.contains(&(x, y)) {
+                continue;
+            }
+            flood_fill(garden, &mut garden_plot, (x, y), garden[x][y]);
+            all_garden_plots.extend(garden_plot.iter().cloned());
+            garden_plot_type_map.insert((x, y), garden_plot);
         }
-
-        let partitions = partition
-            .chunk_by(|a, b| plot_sides[a].contains(&Up) && plot_sides[b].contains(&Up))
-            .filter(|p| p.len() > 1)
-            .collect::<Vec<_>>();
-        no_of_sides += partitions.len();
-
-        // if we have more then one Up, remove them as they count as 1
-        partitions.into_iter().for_each(|partition| {
-            partition.iter().for_each(|&p| {
-                plot_sides.entry(p).and_modify(|sides| {
-                    sides.remove(&Up);
-                });
-            });
-        });
-
-        let partitions = partition
-            .chunk_by(|a, b| plot_sides[a].contains(&Down) && plot_sides[b].contains(&Down))
-            .filter(|p| p.len() > 1)
-            .collect::<Vec<_>>();
-        no_of_sides += partitions.len();
-
-        // if we have more then one Down, remove them as they count as 1
-        partitions.into_iter().for_each(|partition| {
-            partition.iter().for_each(|&p| {
-                plot_sides.entry(p).and_modify(|sides| {
-                    sides.remove(&Down);
-                });
-            });
-        });
     }
 
-    // calculate for columns
+    garden_plot_type_map
+}
+
+fn compute_no_of_sides(
+    plot_sides_per_dir: &mut BTreeMap<(usize, usize), BTreeSet<Direction>>,
+    same_line: &[Vec<(usize, usize)>],
+    same_column: &[Vec<(usize, usize)>],
+) -> usize {
+    let mut no_of_sides = 0;
+
+    for partition in same_line.iter() {
+        no_of_sides += count_no_of_sides_per_dir(&Up, plot_sides_per_dir, partition);
+        no_of_sides += count_no_of_sides_per_dir(&Down, plot_sides_per_dir, partition);
+    }
+
     for partition in same_column {
         if partition.len() < 2 {
             continue;
         }
-
-        // for each position in partition remove the left/right directions
-        let partitions = partition
-            .chunk_by(|a, b| plot_sides[a].contains(&Left) && plot_sides[b].contains(&Left))
-            .filter(|p| p.len() > 1)
-            .collect::<Vec<_>>();
-        no_of_sides += partitions.len();
-
-        partitions.into_iter().for_each(|partition| {
-            partition.iter().for_each(|&p| {
-                plot_sides.entry(p).and_modify(|sides| {
-                    sides.remove(&Left);
-                });
-            });
-        });
-
-        let partitions = partition
-            .chunk_by(|a, b| plot_sides[a].contains(&Right) && plot_sides[b].contains(&Right))
-            .filter(|p| p.len() > 1)
-            .collect::<Vec<_>>();
-        no_of_sides += partitions.len();
-
-        partitions.into_iter().for_each(|partition| {
-            partition.iter().for_each(|&p| {
-                plot_sides.entry(p).and_modify(|sides| {
-                    sides.remove(&Right);
-                });
-            });
-        });
+        no_of_sides += count_no_of_sides_per_dir(&Left, plot_sides_per_dir, partition);
+        no_of_sides += count_no_of_sides_per_dir(&Right, plot_sides_per_dir, partition);
     }
+
+    no_of_sides
+}
+
+fn count_no_of_sides_per_dir(
+    dir: &Direction,
+    plot_sides: &mut BTreeMap<(usize, usize), BTreeSet<Direction>>,
+    partition: &[(usize, usize)],
+) -> usize {
+    let partitions = partition
+        .chunk_by(|a, b| plot_sides[a].contains(dir) && plot_sides[b].contains(dir))
+        .filter(|p| p.len() > 1)
+        .collect::<Vec<_>>();
+    let no_of_sides = partitions.len();
+
+    partitions.into_iter().for_each(|partition| {
+        partition.iter().for_each(|&p| {
+            plot_sides.entry(p).and_modify(|sides| {
+                sides.remove(dir);
+            });
+        });
+    });
 
     no_of_sides
 }
