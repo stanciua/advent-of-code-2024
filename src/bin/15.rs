@@ -1,6 +1,7 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 advent_of_code::solution!(15);
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::VecDeque,
     ops::{Add, Index, IndexMut},
 };
 
@@ -21,12 +22,6 @@ struct Warehouse(Vec<Vec<char>>);
 
 const DIRECTIONS: [Pos; 4] = [Pos(-1, 0), Pos(1, 0), Pos(0, -1), Pos(0, 1)];
 
-#[derive(Default, Debug, PartialEq, Eq, Copy, Clone, Hash)]
-struct Box {
-    left: Pos,
-    right: Pos,
-}
-
 #[derive(Debug, Eq, PartialEq)]
 struct Document {
     warehouse: Warehouse,
@@ -36,8 +31,8 @@ struct Document {
 impl Add for Pos {
     type Output = Self;
 
-    fn add(self, other: Pos) -> Pos {
-        Pos(self.0 + other.0, self.1 + other.1)
+    fn add(self, other: Self) -> Self {
+        Self(self.0 + other.0, self.1 + other.1)
     }
 }
 
@@ -46,19 +41,21 @@ impl Index<Pos> for Warehouse {
     type Output = char;
 
     fn index(&self, index: Pos) -> &Self::Output {
-        &self.0[index.0 as usize][index.1 as usize]
+        &self.0[usize::try_from(index.0).unwrap_or_default()]
+            [usize::try_from(index.1).unwrap_or_default()]
     }
 }
 
 // Implement the IndexMut trait for Warehose
 impl IndexMut<Pos> for Warehouse {
     fn index_mut(&mut self, index: Pos) -> &mut Self::Output {
-        &mut self.0[index.0 as usize][index.1 as usize]
+        &mut self.0[usize::try_from(index.0).unwrap_or_default()]
+            [usize::try_from(index.1).unwrap_or_default()]
     }
 }
 
 fn parse_input(input: &str) -> Document {
-    use Direction::*;
+    use Direction::{Down, Left, Right, Up};
     let mut warehouse = Vec::new();
     let mut moves = Vec::new();
     let mut moves_flag = false;
@@ -68,24 +65,20 @@ fn parse_input(input: &str) -> Document {
             continue;
         }
 
-        if !moves_flag {
-            warehouse.push(line.chars().collect());
+        if moves_flag {
+            moves.extend(line.chars().map(|c| {
+                if c == '<' {
+                    Left
+                } else if c == '>' {
+                    Right
+                } else if c == '^' {
+                    Up
+                } else {
+                    Down
+                }
+            }));
         } else {
-            moves.extend(
-                line.chars()
-                    .map(|c| {
-                        if c == '<' {
-                            Left
-                        } else if c == '>' {
-                            Right
-                        } else if c == '^' {
-                            Up
-                        } else {
-                            Down
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            );
+            warehouse.push(line.chars().collect());
         }
     }
 
@@ -95,20 +88,8 @@ fn parse_input(input: &str) -> Document {
     }
 }
 
-// 00000000001111111111
-// 01234567890123456789
-//0####################
-//1##[].......[].[][]##
-//2##[]...........[].##
-//3##[]........[][][]##
-//4##[]......[]...@[]##
-//5##..##......[]....##
-//6##..[]............##
-//7##.........[].[][]##
-//8##......[][]..[]..##
-//9####################";
 fn stick_robot_to_boxes2(warehouse: &Warehouse, pos: Pos, dir: Direction) -> Vec<Pos> {
-    use Direction::*;
+    use Direction::{Down, Left, Right, Up};
     // the robot included is sticked to the a list of boxes
     let mut sticked = Vec::from([pos]);
     let mut curr_boxes_per_level = VecDeque::from([pos]);
@@ -187,30 +168,15 @@ fn stick_robot_to_boxes2(warehouse: &Warehouse, pos: Pos, dir: Direction) -> Vec
                 next = next + DIRECTIONS[Right as usize];
             }
         }
-        _ => {
-            unreachable!();
-        }
     }
 
     sticked.reverse();
     sticked
 }
 fn stick_robot_to_boxes(warehouse: &Warehouse, pos: Pos, dir: Direction) -> Vec<Pos> {
-    use Direction::*;
+    use Direction::{Down, Left, Right, Up};
     // the robot included is sticked to the a list of boxes
     let mut sticked = Vec::from([pos]);
-    // 00000000001111111111
-    // 01234567890123456789
-    //0####################
-    //1##[].......[].[][]##
-    //2##[]...........[].##
-    //3##[]........[][][]##
-    //4##[]......[]...@[]##
-    //5##..##......[]....##
-    //6##..[]............##
-    //7##.........[].[][]##
-    //8##......[][]..[]..##
-    //9####################";
     match dir {
         Up => {
             let mut next = pos + DIRECTIONS[Up as usize];
@@ -240,18 +206,15 @@ fn stick_robot_to_boxes(warehouse: &Warehouse, pos: Pos, dir: Direction) -> Vec<
                 next = next + DIRECTIONS[Right as usize];
             }
         }
-        _ => {
-            unreachable!();
-        }
     }
 
     sticked.reverse();
     sticked
 }
 
-fn move_robot(document: &mut Document, pos: Pos, double: bool) {
+fn move_robot(document: &mut Document, pos: Pos) {
     let mut pos = pos;
-    for (idx, &dir) in document.moves.iter().enumerate() {
+    for &dir in &document.moves {
         let sticked = stick_robot_to_boxes(&document.warehouse, pos, dir);
 
         let first_pos = sticked[0];
@@ -274,35 +237,30 @@ fn move_robot(document: &mut Document, pos: Pos, double: bool) {
     }
 }
 
-fn move_robot_in_dir(warehouse: &mut Warehouse, pos: Pos, dir: Direction) {
-    let sticked = stick_robot_to_boxes2(warehouse, pos, dir);
+fn move_robot_in_dir(warehouse: &mut Warehouse, pos: &mut Pos, dir: Direction) {
+    let sticked = stick_robot_to_boxes2(warehouse, *pos, dir);
 
     if can_boxes_move_in_dir(warehouse, &sticked, dir) {
         // we are able to move in this direction, so move all sticked boxes if any and the
         // robot
         for &p in &sticked {
             let next = p + DIRECTIONS[dir as usize];
-            dbg!(p);
-            dbg!(next);
-            dbg!("before", warehouse[p]);
-            dbg!("before", warehouse[next]);
             warehouse[next] = warehouse[p];
             warehouse[p] = '.';
-            dbg!("after", warehouse[p]);
-            dbg!("after", warehouse[next]);
+            if warehouse[next] == '@' {
+                *pos = next;
+            }
         }
     }
 }
-fn move_robot2(document: &mut Document, pos: Pos) {
+fn move_robot2(document: &mut Document, pos: &mut Pos) {
     for &dir in &document.moves {
         move_robot_in_dir(&mut document.warehouse, pos, dir);
-        dbg!(dir);
-        display(&document.warehouse);
     }
 }
 
 fn can_boxes_move_in_dir(warehouse: &Warehouse, positions: &Vec<Pos>, dir: Direction) -> bool {
-    use Direction::*;
+    use Direction::{Down, Left, Right, Up};
     match dir {
         Up => {
             for &pos in positions {
@@ -357,20 +315,15 @@ fn can_boxes_move_in_dir(warehouse: &Warehouse, positions: &Vec<Pos>, dir: Direc
     true
 }
 
-fn display(warehouse: &Warehouse) {
-    for row in &warehouse.0 {
-        for c in row {
-            print!("{c}");
-        }
-        println!();
-    }
-}
-
 fn sum_gps_coord(warehouse: &Warehouse) -> usize {
     let mut sum = 0;
     for (i, row) in warehouse.0.iter().enumerate() {
         for (j, _) in row.iter().enumerate() {
-            if warehouse[Pos(i as i32, j as i32)] == 'O' {
+            let tile = warehouse[Pos(
+                i32::try_from(i).unwrap_or_default(),
+                i32::try_from(j).unwrap_or_default(),
+            )];
+            if tile == 'O' || tile == '[' {
                 sum += (i) * 100 + j;
             }
         }
@@ -378,24 +331,11 @@ fn sum_gps_coord(warehouse: &Warehouse) -> usize {
     sum
 }
 
+#[must_use]
 pub fn part_one(input: &str) -> Option<u64> {
     let mut document = parse_input(input);
-    let rows = document.warehouse.0.len();
-    let cols = document.warehouse.0[0].len();
-    let mut robot_pos = Pos(0, 0);
-    {
-        let warehouse = &document.warehouse;
-        'outer: for i in 0..rows {
-            for j in 0..cols {
-                if warehouse[Pos(i as i32, j as i32)] == '@' {
-                    robot_pos = Pos(i as i32, j as i32);
-                    break 'outer;
-                }
-            }
-        }
-    }
-
-    move_robot(&mut document, robot_pos, false);
+    let robot_pos = find_robot_pos(&document.warehouse);
+    move_robot(&mut document, robot_pos);
     Some(sum_gps_coord(&document.warehouse) as u64)
 }
 
@@ -425,14 +365,15 @@ fn double_tiles(warehouse: &Warehouse) -> Warehouse {
     Warehouse(new_warehouse)
 }
 
+#[must_use]
 pub fn part_two(input: &str) -> Option<u64> {
     let mut document = parse_input(input);
     let new_warehouse = double_tiles(&document.warehouse);
     document.warehouse = new_warehouse;
-    let robot_pos = find_robot_pos(&document.warehouse);
+    let mut robot_pos = find_robot_pos(&document.warehouse);
 
-    move_robot2(&mut document, robot_pos);
-    Some(0)
+    move_robot2(&mut document, &mut robot_pos);
+    Some(sum_gps_coord(&document.warehouse) as u64)
 }
 
 fn find_robot_pos(warehouse: &Warehouse) -> Pos {
@@ -440,8 +381,13 @@ fn find_robot_pos(warehouse: &Warehouse) -> Pos {
     let cols = warehouse.0[0].len();
     for i in 0..rows {
         for j in 0..cols {
-            if warehouse[Pos(i as i32, j as i32)] == '@' {
-                return Pos(i as i32, j as i32);
+            let pos = Pos(
+                i32::try_from(i).unwrap_or_default(),
+                i32::try_from(j).unwrap_or_default(),
+            );
+            let tile = warehouse[pos];
+            if tile == '@' {
+                return pos;
             }
         }
     }
@@ -456,13 +402,13 @@ mod tests {
     #[test]
     fn test_part_one() {
         let result = part_one(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(10092));
     }
 
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(9021));
     }
 
     #[test]
@@ -581,7 +527,7 @@ mod tests {
 ....[]..
 .....@..";
         let mut document = parse_input(input);
-        let robot_pos = find_robot_pos(&document.warehouse);
+        let mut robot_pos = find_robot_pos(&document.warehouse);
         let sticked = stick_robot_to_boxes2(&document.warehouse, robot_pos, Up);
         let expected = vec![
             Pos(2, 3),
@@ -605,7 +551,7 @@ mod tests {
             .lines()
             .map(|line| line.chars().collect::<Vec<_>>())
             .collect::<Vec<_>>();
-        move_robot_in_dir(&mut document.warehouse, robot_pos, Up);
+        move_robot_in_dir(&mut document.warehouse, &mut robot_pos, Up);
 
         assert_eq!(Warehouse(expect), document.warehouse);
     }
@@ -681,7 +627,7 @@ mod tests {
 ....[]..
 ........";
         let mut document = parse_input(input);
-        let robot_pos = find_robot_pos(&document.warehouse);
+        let mut robot_pos = find_robot_pos(&document.warehouse);
         let sticked = stick_robot_to_boxes2(&document.warehouse, robot_pos, Down);
         let expected = vec![
             Pos(4, 5),
@@ -704,7 +650,7 @@ mod tests {
             .map(|line| line.chars().collect::<Vec<_>>())
             .collect::<Vec<_>>();
 
-        move_robot_in_dir(&mut document.warehouse, robot_pos, Down);
+        move_robot_in_dir(&mut document.warehouse, &mut robot_pos, Down);
         assert_eq!(Warehouse(expect), document.warehouse);
     }
 
