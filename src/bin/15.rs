@@ -121,6 +121,9 @@ fn stick_robot_to_boxes2(warehouse: &Warehouse, pos: Pos, dir: Direction) -> Vec
                         sticked.push(left);
                         curr_boxes_per_level.push_back(left);
                     }
+                } else if next_tile == 'O' && !sticked.contains(&next) {
+                    sticked.push(next);
+                    curr_boxes_per_level.push_back(next);
                 }
             }
         }
@@ -151,90 +154,34 @@ fn stick_robot_to_boxes2(warehouse: &Warehouse, pos: Pos, dir: Direction) -> Vec
                         sticked.push(left);
                         curr_boxes_per_level.push_back(left);
                     }
+                } else if next_tile == 'O' && !sticked.contains(&next) {
+                    sticked.push(next);
+                    curr_boxes_per_level.push_back(next);
                 }
             }
         }
         Left => {
             let mut next = pos + DIRECTIONS[Left as usize];
-            while warehouse[next] == '[' || warehouse[next] == ']' {
+            let mut next_tile = warehouse[next];
+            while next_tile == '[' || next_tile == ']' || next_tile == 'O' {
                 sticked.push(next);
                 next = next + DIRECTIONS[Left as usize];
+                next_tile = warehouse[next];
             }
         }
         Right => {
             let mut next = pos + DIRECTIONS[Right as usize];
-            while warehouse[next] == '[' || warehouse[next] == ']' {
+            let mut next_tile = warehouse[next];
+            while next_tile == '[' || next_tile == ']' || next_tile == 'O' {
                 sticked.push(next);
                 next = next + DIRECTIONS[Right as usize];
+                next_tile = warehouse[next];
             }
         }
     }
 
     sticked.reverse();
     sticked
-}
-fn stick_robot_to_boxes(warehouse: &Warehouse, pos: Pos, dir: Direction) -> Vec<Pos> {
-    use Direction::{Down, Left, Right, Up};
-    // the robot included is sticked to the a list of boxes
-    let mut sticked = Vec::from([pos]);
-    match dir {
-        Up => {
-            let mut next = pos + DIRECTIONS[Up as usize];
-            while warehouse[next] == 'O' {
-                sticked.push(next);
-                next = next + DIRECTIONS[Up as usize];
-            }
-        }
-        Down => {
-            let mut next = pos + DIRECTIONS[Down as usize];
-            while warehouse[next] == 'O' {
-                sticked.push(next);
-                next = next + DIRECTIONS[Down as usize];
-            }
-        }
-        Left => {
-            let mut next = pos + DIRECTIONS[Left as usize];
-            while warehouse[next] == 'O' {
-                sticked.push(next);
-                next = next + DIRECTIONS[Left as usize];
-            }
-        }
-        Right => {
-            let mut next = pos + DIRECTIONS[Right as usize];
-            while warehouse[next] == 'O' {
-                sticked.push(next);
-                next = next + DIRECTIONS[Right as usize];
-            }
-        }
-    }
-
-    sticked.reverse();
-    sticked
-}
-
-fn move_robot(document: &mut Document, pos: Pos) {
-    let mut pos = pos;
-    for &dir in &document.moves {
-        let sticked = stick_robot_to_boxes(&document.warehouse, pos, dir);
-
-        let first_pos = sticked[0];
-        let next = first_pos + DIRECTIONS[dir as usize];
-        let warehouse = &mut document.warehouse;
-        if warehouse[next] == '.' {
-            // we are able to move in this direction, so move all sticked boxes if any and the
-            // robot
-            for (idx, &p) in sticked.iter().enumerate() {
-                let next = p + DIRECTIONS[dir as usize];
-                warehouse[next] = warehouse[p];
-                if idx == sticked.len() - 1 {
-                    pos = next;
-                }
-            }
-            // the last position in the sticked list after move should be '.'
-            let last_pos = sticked[sticked.len() - 1];
-            warehouse[last_pos] = '.';
-        }
-    }
 }
 
 fn move_robot_in_dir(warehouse: &mut Warehouse, pos: &mut Pos, dir: Direction) {
@@ -253,17 +200,18 @@ fn move_robot_in_dir(warehouse: &mut Warehouse, pos: &mut Pos, dir: Direction) {
         }
     }
 }
-fn move_robot2(document: &mut Document, pos: &mut Pos) {
+
+fn move_robot(document: &mut Document, pos: &mut Pos) {
     for &dir in &document.moves {
         move_robot_in_dir(&mut document.warehouse, pos, dir);
     }
 }
 
-fn can_boxes_move_in_dir(warehouse: &Warehouse, positions: &Vec<Pos>, dir: Direction) -> bool {
+fn can_boxes_move_in_dir(warehouse: &Warehouse, sticked_boxes: &Vec<Pos>, dir: Direction) -> bool {
     use Direction::{Down, Left, Right, Up};
     match dir {
         Up => {
-            for &pos in positions {
+            for &pos in sticked_boxes {
                 let next = pos + DIRECTIONS[Up as usize];
                 let next_tile = warehouse[next];
                 if next_tile == '#' {
@@ -272,7 +220,7 @@ fn can_boxes_move_in_dir(warehouse: &Warehouse, positions: &Vec<Pos>, dir: Direc
             }
         }
         Down => {
-            for &pos in positions {
+            for &pos in sticked_boxes {
                 let next = pos + DIRECTIONS[Down as usize];
                 let next_tile = warehouse[next];
                 if next_tile == '#' {
@@ -282,13 +230,13 @@ fn can_boxes_move_in_dir(warehouse: &Warehouse, positions: &Vec<Pos>, dir: Direc
         }
 
         Left => {
-            let fbox_left = positions[0];
+            let fbox_left = sticked_boxes[0];
             let next_left = fbox_left + DIRECTIONS[Left as usize];
             if warehouse[next_left] == '#' {
                 return false;
             }
-            if positions.len() > 1 {
-                let fbox_right = positions[1];
+            if sticked_boxes.len() > 1 {
+                let fbox_right = sticked_boxes[1];
                 let next_right = fbox_right + DIRECTIONS[Left as usize];
                 if warehouse[next_right] == '#' {
                     return false;
@@ -297,13 +245,13 @@ fn can_boxes_move_in_dir(warehouse: &Warehouse, positions: &Vec<Pos>, dir: Direc
         }
 
         Right => {
-            let fbox_left = positions[0];
+            let fbox_left = sticked_boxes[0];
             let next_left = fbox_left + DIRECTIONS[Right as usize];
             if warehouse[next_left] == '#' {
                 return false;
             }
-            if positions.len() > 1 {
-                let fbox_right = positions[1];
+            if sticked_boxes.len() > 1 {
+                let fbox_right = sticked_boxes[1];
                 let next_right = fbox_right + DIRECTIONS[Right as usize];
                 if warehouse[next_right] == '#' {
                     return false;
@@ -334,8 +282,8 @@ fn sum_gps_coord(warehouse: &Warehouse) -> usize {
 #[must_use]
 pub fn part_one(input: &str) -> Option<u64> {
     let mut document = parse_input(input);
-    let robot_pos = find_robot_pos(&document.warehouse);
-    move_robot(&mut document, robot_pos);
+    let mut robot_pos = find_robot_pos(&document.warehouse);
+    move_robot(&mut document, &mut robot_pos);
     Some(sum_gps_coord(&document.warehouse) as u64)
 }
 
@@ -372,7 +320,7 @@ pub fn part_two(input: &str) -> Option<u64> {
     document.warehouse = new_warehouse;
     let mut robot_pos = find_robot_pos(&document.warehouse);
 
-    move_robot2(&mut document, &mut robot_pos);
+    move_robot(&mut document, &mut robot_pos);
     Some(sum_gps_coord(&document.warehouse) as u64)
 }
 
