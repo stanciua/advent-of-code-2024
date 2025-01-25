@@ -1,7 +1,8 @@
 advent_of_code::solution!(16);
 
 use std::{
-    collections::{HashSet, VecDeque},
+    cmp::Ordering,
+    collections::{BinaryHeap, HashMap, HashSet, VecDeque},
     ops::{Add, Index, IndexMut},
 };
 
@@ -21,6 +22,7 @@ struct Pos(i32, i32);
 struct Map(Vec<Vec<char>>);
 
 const DIRECTIONS: [Pos; 4] = [Pos(-1, 0), Pos(1, 0), Pos(0, -1), Pos(0, 1)];
+const SYMS: [char; 4] = ['^', 'v', '<', '>'];
 
 impl Add for Pos {
     type Output = Self;
@@ -48,6 +50,40 @@ impl IndexMut<Pos> for Map {
     }
 }
 
+impl From<usize> for Direction {
+    fn from(value: usize) -> Self {
+        use Direction::*;
+        match value {
+            0 => Up,
+            1 => Down,
+            2 => Left,
+            3 => Right,
+            _ => panic!("Invalid usize value for Direction"),
+        }
+    }
+}
+
+// A struct to represent a state in the priority queue
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct State {
+    cost: usize,
+    pos: Pos,
+    orientation: Direction,
+}
+
+// Implementing ordering for the BinaryHeap to prioritize smaller costs
+impl Ord for State {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other.cost.cmp(&self.cost) // Reverse to make BinaryHeap a min-heap
+    }
+}
+
+impl PartialOrd for State {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 fn parse_input(input: &str) -> Map {
     let mut map = Vec::new();
     for line in input.lines() {
@@ -66,7 +102,7 @@ fn display(map: &Map) {
     }
 }
 
-fn find_start_and_end_pos(map: &Map) -> (Pos, Pos){
+fn find_start_and_end_pos(map: &Map) -> (Pos, Pos) {
     let (mut start, mut end) = (Pos(0, 0), Pos(0, 0));
     for i in 0..map.0.len() {
         for j in 0..map.0[0].len() {
@@ -83,38 +119,170 @@ fn find_start_and_end_pos(map: &Map) -> (Pos, Pos){
     (start, end)
 }
 
-fn find_shortest_path(map: &Map, start: Pos, end: Pos) -> Option<u64> {
-    let mut visited = HashSet::new();
-    let mut queue = VecDeque::new();
+fn find_shortest_path(
+    map: &Map,
+    start: Pos,
+    end: Pos,
+) -> (HashMap<Pos, usize>, HashMap<Pos, Option<Pos>>) {
+    let mut distances = HashMap::new();
+    let mut previous_pos = HashMap::new();
+    let mut priority_queue = BinaryHeap::new();
+    use Direction::*;
 
-    // Initialize BFS
-    queue.push_back((start, 0)); // (row, col, distance)
-    visited.insert(start);
+    for i in 0..map.0.len() {
+        for j in 0..map.0[i].len() {
+            distances.insert(Pos(i as i32, j as i32), usize::MAX);
+        }
+    }
 
-    while let Some((pos, dist)) = queue.pop_front() {
-        if pos == end {
-            return Some(dist);
+    distances.insert(start, 0);
+    priority_queue.push(State {
+        cost: 0,
+        pos: start,
+        orientation: Right,
+    });
+
+    while let Some(State {
+        cost,
+        pos,
+        orientation,
+    }) = priority_queue.pop()
+    {
+        if cost > *distances.get(&pos).unwrap_or(&usize::MAX) {
+            continue;
         }
 
         // Explore neighbors
-        for dir in DIRECTIONS {
+        for (idx, &dir) in DIRECTIONS.iter().enumerate() {
             let new_pos = pos + dir;
 
-            if map[new_pos] != '#' && !visited.contains(&new_pos) {
-                visited.insert(new_pos);
-                queue.push_back((new_pos, dist + 1));
+            if map[new_pos] != '#' {
+                let (orientation, weight) = get_penalty(orientation, idx);
+                let new_cost = cost + weight;
+                if new_cost < *distances.get(&new_pos).unwrap_or(&usize::MAX) {
+                    distances.insert(new_pos, new_cost);
+                    previous_pos.insert(new_pos, Some(pos));
+                    priority_queue.push(State {
+                        cost: new_cost,
+                        pos: new_pos,
+                        orientation,
+                    });
+                }
             }
         }
     }
 
-    None // No path found
+    (distances, previous_pos)
 }
 
-pub fn part_one(input: &str) -> Option<u64> {
+// A function to reconstruct the shortest path
+fn compute_score_for_path(previous_pos: &HashMap<Pos, Option<Pos>>, start: Pos, target: Pos) -> Vec<Pos> {
+    let mut path = Vec::new();
+    let mut current = Some(target);
+
+    while let Some(pos) = current {
+        path.push(pos);
+        current = *previous_pos.get(&pos).unwrap_or(&None);
+    }
+
+    path.reverse();
+    dbg!(&path);
+
+    if path.first() == Some(&start) {
+        path
+    } else {
+        vec![] // Return an empty path if no valid path exists
+    }
+}
+// fn find_shortest_path(map: &Map, start: Pos, end: Pos) -> Option<usize> {
+//     let mut visited = HashSet::new();
+//     let mut queue = VecDeque::new();
+//     use Direction::*;
+//     let mut update_map = map.clone();
+//
+//     // Initialize BFS
+//     queue.push_back((start, 0, Right)); // (row, col, distance)
+//     visited.insert(start);
+//
+//     while let Some((pos, dist, orientation)) = queue.pop_front() {
+//         if pos == end {
+//             for i in 0..update_map.0.len() {
+//                 for j in 0..update_map.0[i].len() {
+//                     print!("{}", update_map[Pos(i as i32,j as i32)]);
+//                 }
+//                 println!();
+//             }
+//             return Some(dist);
+//         }
+//
+//         // Explore neighbors
+//         for (idx, &dir) in DIRECTIONS.iter().enumerate() {
+//             let new_pos = pos + dir;
+//
+//             if map[new_pos] != '#' && !visited.contains(&new_pos) {
+//                 let (orientation, penalty) = get_penalty(orientation, idx);
+//                 visited.insert(new_pos);
+//                 update_map[new_pos] = SYMS[orientation as usize];
+//                 queue.push_back((new_pos, dist + penalty, orientation));
+//             }
+//         }
+//     }
+//
+//     None // No path found
+// }
+
+fn get_penalty(orientation: Direction, dir: usize) -> (Direction, usize) {
+    use Direction::*;
+    let clockwise = [Up, Right, Down, Left];
+    let anti_clockwise = [Up, Left, Down, Right];
+    let mut penalty_clockwise = 0;
+    let mut penalty_anti_clockwise = 0;
+    let mut curr_orientation = orientation;
+    let next_orientation = Direction::from(dir);
+    if orientation == next_orientation {
+        return (orientation, 1);
+    }
+
+    let mut idx = clockwise
+        .into_iter()
+        .position(|d| d == orientation)
+        .unwrap_or(0);
+
+    while curr_orientation != next_orientation {
+        penalty_clockwise += 1000;
+        idx = (idx + 1) % clockwise.len();
+        curr_orientation = clockwise[idx];
+    }
+
+    let mut idx = anti_clockwise
+        .into_iter()
+        .position(|d| d == orientation)
+        .unwrap_or(0);
+
+    let mut curr_orientation = orientation;
+    while curr_orientation != next_orientation {
+        penalty_anti_clockwise += 1000;
+        idx = (idx + 1) % anti_clockwise.len();
+        curr_orientation = anti_clockwise[idx];
+    }
+
+    if penalty_clockwise < penalty_anti_clockwise {
+        (next_orientation, penalty_clockwise + 1)
+    } else {
+        (next_orientation, penalty_anti_clockwise + 1)
+    }
+}
+
+pub fn part_one(input: &str) -> Option<usize> {
     let map = parse_input(input);
     let (start, end) = find_start_and_end_pos(&map);
 
-    find_shortest_path(&map, start, end)
+    let (distances, previous_pos) = find_shortest_path(&map, start, end);
+    if !compute_score_for_path(&previous_pos, start, end).is_empty() {
+        distances.get(&end).copied()
+    } else {
+        Some(0)
+    }
 }
 
 pub fn part_two(input: &str) -> Option<u64> {
@@ -124,6 +292,19 @@ pub fn part_two(input: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use Direction::*;
+
+    #[test]
+    fn test_penalty_for_turning() {
+        // same orientation
+        assert_eq!((Up, 1), get_penalty(Up, Up as usize));
+        // orientation Up, next Left
+        assert_eq!((Left, 1000), get_penalty(Up, Left as usize));
+        // orientation Up, next Down
+        assert_eq!((Down, 2000), get_penalty(Up, Down as usize));
+        // orientation Up, next Right
+        assert_eq!((Right, 1000), get_penalty(Up, Right as usize));
+    }
 
     #[test]
     fn test_part_one() {
