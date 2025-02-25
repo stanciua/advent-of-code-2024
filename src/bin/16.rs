@@ -142,31 +142,47 @@ fn find_shortest_path(
         orientation: Right,
     });
 
+    // 0123456789
+    //0##########
+    //1#.......E#
+    //2#.##.#####
+    //3#..#....##
+    //4##.####.##
+    //5#S......##
+    //6##########
     while let Some(State {
         cost,
         pos,
         orientation,
     }) = priority_queue.pop()
     {
-        if cost > *distances.get(&pos).unwrap_or(&usize::MAX) {
-            continue;
-        }
+        dbg!("-------------------------------------");
+        dbg!(cost, pos, orientation);
+        // if cost > *distances.get(&pos).unwrap_or(&usize::MAX) {
+        //     continue;
+        // }
 
         // Explore neighbors
+        // UP, DOWN, LEFT, RIGHT
         for (idx, &dir) in DIRECTIONS.iter().enumerate() {
             let new_pos = pos + dir;
 
-            if map[new_pos] != '#' {
+            if map[new_pos] != '#' && new_pos != pos {
                 let (orientation, weight) = get_penalty(orientation, idx);
                 let new_cost = cost + weight;
-                if new_cost < *distances.get(&new_pos).unwrap_or(&usize::MAX) {
+                let curr_cost = *distances.get(&new_pos).unwrap_or(&usize::MAX);
+                let all_dir_costs = cost_in_all_dirs(orientation, curr_cost);
+                dbg!(&all_dir_costs);
+                if new_cost < all_dir_costs[idx] {
                     distances.insert(new_pos, new_cost);
                     previous_pos.insert(new_pos, Some(pos));
-                    priority_queue.push(State {
+                    let state = State {
                         cost: new_cost,
                         pos: new_pos,
                         orientation,
-                    });
+                    };
+                    dbg!(&state);
+                    priority_queue.push(state);
                 }
             }
         }
@@ -175,8 +191,23 @@ fn find_shortest_path(
     (distances, previous_pos)
 }
 
+fn cost_in_all_dirs(orientation: Direction, curr_cost: usize) -> [usize; 4] {
+    let mut costs = [0usize; 4];
+
+    for (idx, _) in DIRECTIONS.iter().enumerate() {
+        let (_, c) = get_penalty(orientation, idx);
+        costs[idx] = c + curr_cost;
+    }
+
+    costs
+}
+
 // A function to reconstruct the shortest path
-fn compute_score_for_path(previous_pos: &HashMap<Pos, Option<Pos>>, start: Pos, target: Pos) -> Vec<Pos> {
+fn compute_score_for_path(
+    previous_pos: &HashMap<Pos, Option<Pos>>,
+    start: Pos,
+    target: Pos,
+) -> Vec<Pos> {
     let mut path = Vec::new();
     let mut current = Some(target);
 
@@ -186,7 +217,6 @@ fn compute_score_for_path(previous_pos: &HashMap<Pos, Option<Pos>>, start: Pos, 
     }
 
     path.reverse();
-    dbg!(&path);
 
     if path.first() == Some(&start) {
         path
