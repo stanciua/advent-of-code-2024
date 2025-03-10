@@ -123,7 +123,7 @@ fn find_shortest_path(
     map: &Map,
     start: Pos,
     end: Pos,
-) -> (HashMap<Pos, usize>, HashMap<Pos, Option<Pos>>) {
+) -> (HashMap<Pos, (usize, Direction)>, HashMap<Pos, Option<Pos>>) {
     let mut distances = HashMap::new();
     let mut previous_pos = HashMap::new();
     let mut priority_queue = BinaryHeap::new();
@@ -131,11 +131,11 @@ fn find_shortest_path(
 
     for i in 0..map.0.len() {
         for j in 0..map.0[i].len() {
-            distances.insert(Pos(i as i32, j as i32), usize::MAX);
+            distances.insert(Pos(i as i32, j as i32), (usize::MAX, Right));
         }
     }
 
-    distances.insert(start, 0);
+    distances.insert(start, (0, Right));
     priority_queue.push(State {
         cost: 0,
         pos: start,
@@ -150,18 +150,20 @@ fn find_shortest_path(
     //4##.####.##
     //5#S......##
     //6##########
-    while let Some(State {
-        cost,
-        pos,
-        orientation,
-    }) = priority_queue.pop()
-    {
-        dbg!("-------------------------------------");
-        dbg!(cost, pos, orientation);
-        // if cost > *distances.get(&pos).unwrap_or(&usize::MAX) {
-        //     continue;
-        // }
+    while let Some(state) = priority_queue.pop() {
+        let State {
+            cost,
+            pos,
+            orientation,
+        } = state;
 
+        if pos == end {
+            return (distances, previous_pos);
+        }
+        let (curr_cost, _) = *distances.get(&pos).unwrap_or(&(usize::MAX, Right));
+        if curr_cost != usize::MAX && cost > curr_cost {
+            continue;
+        }
         // Explore neighbors
         // UP, DOWN, LEFT, RIGHT
         for (idx, &dir) in DIRECTIONS.iter().enumerate() {
@@ -170,18 +172,19 @@ fn find_shortest_path(
             if map[new_pos] != '#' && new_pos != pos {
                 let (orientation, weight) = get_penalty(orientation, idx);
                 let new_cost = cost + weight;
-                let curr_cost = *distances.get(&new_pos).unwrap_or(&usize::MAX);
-                let all_dir_costs = cost_in_all_dirs(orientation, curr_cost);
-                dbg!(&all_dir_costs);
-                if new_cost < all_dir_costs[idx] {
-                    distances.insert(new_pos, new_cost);
+                let (mut curr_cost, curr_dir) = *distances.get(&new_pos).unwrap_or(&(usize::MAX, Right));
+                if curr_cost != usize::MAX {
+                    let (_, weight) = get_penalty(curr_dir, idx);
+                    curr_cost += weight;
+                }
+                if new_cost < curr_cost {
+                    distances.insert(new_pos, (new_cost, orientation));
                     previous_pos.insert(new_pos, Some(pos));
                     let state = State {
                         cost: new_cost,
                         pos: new_pos,
                         orientation,
                     };
-                    dbg!(&state);
                     priority_queue.push(state);
                 }
             }
@@ -196,7 +199,11 @@ fn cost_in_all_dirs(orientation: Direction, curr_cost: usize) -> [usize; 4] {
 
     for (idx, _) in DIRECTIONS.iter().enumerate() {
         let (_, c) = get_penalty(orientation, idx);
-        costs[idx] = c + curr_cost;
+        if curr_cost == usize::MAX {
+            costs[idx] = usize::MAX;
+        } else {
+            costs[idx] = c;
+        }
     }
 
     costs
@@ -308,8 +315,9 @@ pub fn part_one(input: &str) -> Option<usize> {
     let (start, end) = find_start_and_end_pos(&map);
 
     let (distances, previous_pos) = find_shortest_path(&map, start, end);
+    // distances.get(&end).map(|(dist, _)| dist).copied()
     if !compute_score_for_path(&previous_pos, start, end).is_empty() {
-        distances.get(&end).copied()
+        distances.get(&end).copied().map(|(c, _)| c)
     } else {
         Some(0)
     }
@@ -346,5 +354,17 @@ mod tests {
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
         assert_eq!(result, None);
+    }
+    #[test]
+    fn test_call_in_all_dir() {
+        let costs = cost_in_all_dirs(Right, 0);
+        assert_eq!([1001, 1001, 2001, 1], cost_in_all_dirs(Right, 0));
+
+        // enum Direction {
+        //     Up = 0,
+        //     Down = 1,
+        //     Left = 2,
+        //     Right = 3,
+        // }
     }
 }
